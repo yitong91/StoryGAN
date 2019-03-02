@@ -3,6 +3,10 @@
 ## Requirement:
 Python 2.7, Tensorflow 1.8.0, cv2
 
+## Configure File
+/code/cfg/clevr.yml is the configure file for the model. This file contains the setup of the dimension of the features, maximum training epoches and etc.
+
+
 ## Run
 This repository contains the code for CLEVR-SV experiment. In the code folder:
 ```bash
