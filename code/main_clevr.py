@@ -37,7 +37,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    dir_path = '/home/yl353/clevr_images_whole/'
+    dir_path = '../clevr_dataset/'
     args.cfg_file = './cfg/clevr.yml'
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
@@ -53,9 +53,9 @@ if __name__ == "__main__":
     output_dir = './output/%s_%s/' % \
                  (cfg.DATASET_NAME, cfg.CONFIG_NAME)
 
-    test_sample_save_dir = './Result/' + cfg.DATASET_NAME + '_' + cfg.CONFIG_NAME + '_test/'
+    test_sample_save_dir = output_dir + 'test/'
     if not os.path.exists(test_sample_save_dir):
-        os.mkdir(test_sample_save_dir)
+        os.makedirs(test_sample_save_dir)
     num_gpu = len(cfg.GPU_ID.split(','))
     n_channels = 3
     

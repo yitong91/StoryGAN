@@ -137,7 +137,7 @@ def images_to_numpy(tensor):
     generated = (generated + 1) / 2 * 255
     return generated.astype('uint8')
 
-def save_story_results(ground_truth, images, epoch, image_dir, video_len = 5):
+def save_story_results(ground_truth, images, epoch, image_dir, video_len = 5, test = False, ):
     all_images = []
     for i in range(images.shape[0]):
         all_images.append(vutils.make_grid(torch.transpose(images[i], 0,1), video_len))
@@ -153,7 +153,10 @@ def save_story_results(ground_truth, images, epoch, image_dir, video_len = 5):
         all_images = np.concatenate([all_images, gts], axis = 1)
 
     output = PIL.Image.fromarray(all_images)
-    output.save('%s/fake_samples_epoch_%03d.png' % (image_dir, epoch) )
+    if not test:
+        output.save('%s/fake_samples_epoch_%03d.png' % (image_dir, epoch) )
+    else:
+        output.save('%s/test_samples_%03d.png' % (image_dir, epoch) )
     return 
 
 def get_multi_acc(predict, real):
@@ -228,10 +231,7 @@ def save_test_samples(netG, dataloader, save_path):
             catelabel = catelabel.cuda()
 
         _, fake, _,_,_,_ = netG.sample_videos(motion_input, content_input)
-        save_story_results(real_cpu, fake, i, save_path)
-    # gen_images = np.concatenate(gen_images, 0)
-    # labels = np.concatenate(labels, 0)
-    # real_images = np.concatenate(real_images, 0)
-
+        save_story_results(real_cpu, fake, i, save_path, 5, True)
+   
 
             

@@ -16,10 +16,10 @@ class StoryDataset(torch.utils.data.Dataset):
         self.transforms = transform
         if is_train:
             self.srt = 100
-            self.edn = 10100
+            self.edn = 172
         else:
-            self.srt = 10100
-            self.edn = 13099
+            self.srt = 172
+            self.edn = 196
         self.video_len = videl_len
 
     def __getitem__(self, item):
@@ -73,10 +73,10 @@ class ImageDataset(torch.utils.data.Dataset):
         self.transforms = transform
         if is_train:
             self.srt = 100
-            self.edn = 10100
+            self.edn = 172
         else:
-            self.srt = 10100
-            self.edn = 13099
+            self.srt = 172
+            self.edn = 196
         self.video_len = video_len
 
     def __getitem__(self, item):
@@ -121,3 +121,5 @@ def video_transform(video, image_transform):
     vid = torch.stack(vid).permute(1, 0, 2, 3)
 
     return vid
+
+
