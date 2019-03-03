@@ -1,4 +1,5 @@
 # StoryGAN: A Sequential Conditional GAN for Story Visualization
+This repository is still under construction. 
 
 ## Requirement:
 Python 2.7, Tensorflow 1.8.0, cv2
@@ -8,7 +9,7 @@ Python 2.7, Tensorflow 1.8.0, cv2
 
 
 ## Run
-This repository contains the code for CLEVR-SV experiment. In the code folder:
+To run the code on CLEVR-SV experiment:
 ```bash
 python main_clevr.py
 ```
