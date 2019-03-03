@@ -28,7 +28,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a GAN network')
     parser.add_argument('--cfg', dest='cfg_file',
                         help='optional config file',
-                        default='./cfg/pororo_s1.yml', type=str)
+                        default='./cfg/clevr.yml', type=str)
     parser.add_argument('--gpu',  dest='gpu_id', type=str, default='0')
     parser.add_argument('--data_dir', dest='data_dir', type=str, default='')
     parser.add_argument('--manualSeed', type=int, help='manual seed')
@@ -38,7 +38,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     dir_path = '../clevr_dataset/'
-    args.cfg_file = './cfg/clevr.yml'
+    #args.cfg_file = './cfg/clevr.yml'
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
 
