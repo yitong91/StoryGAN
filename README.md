@@ -19,7 +19,7 @@ python main_clevr.py
 @article{li2018storygan,
   title={StoryGAN: A Sequential Conditional GAN for Story Visualization},
   author={Li, Yitong and Gan, Zhe and Shen, Yelong and Liu, Jingjing and Cheng, Yu and Wu, Yuexin and Carin, Lawrence and Carlson, David and Gao, Jianfeng},
-  journal={arXiv preprint arXiv:1812.02784},
-  year={2018}
+  journal={CVPR},
+  year={2019}
 }
 ```
