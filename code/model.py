@@ -231,7 +231,7 @@ class StoryGAN(nn.Module):
 
         # -> ngf x 4 x 4
         self.fc = nn.Sequential(
-            nn.Linear(ninput, ngf * 4 * 4 / 2, bias=False),
+            nn.Linear(ninput, int(ngf * 4 * 4 / 2), bias=False),
             nn.BatchNorm1d(ngf * 4 * 2),
             nn.ReLU(True))
 

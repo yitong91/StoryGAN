@@ -81,7 +81,7 @@ class GANTrainer(object):
         batch_idx, batch = next(self.imagedataset)
         b = batch
         if cfg.CUDA:
-            for k, v in batch.iteritems():
+            for k, v in batch.items():
                 if k == 'text':
                     continue
                 else:
