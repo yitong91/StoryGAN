@@ -318,7 +318,7 @@ class StoryGAN(nn.Module):
         r_code, r_mu, r_logvar = content_mean, content_mean, content_mean #self.ca_net(torch.squeeze(content_input))
         content_input = content_mean.repeat(1, self.video_len)
         content_input = content_input.view((content_input.shape[0]*self.video_len, 
-            content_input.shape[1]/self.video_len))
+            int(content_input.shape[1]/self.video_len)))
 
         temp = motion_input.view(-1, motion_input.shape[2])
         m_code, m_mu, m_logvar = temp, temp, temp #self.ca_net(temp)
@@ -329,7 +329,7 @@ class StoryGAN(nn.Module):
         # one
         zmc_code = torch.cat((zm_code, c_code), dim = 1)
         zmc_code = self.fc(zmc_code)
-        zmc_code = zmc_code.view(-1, self.gf_dim/2, 4, 4)
+        zmc_code = zmc_code.view(-1, int(self.gf_dim/2), 4, 4)
         # two
         m_image = self.image_net(m_code)
         m_image = m_image.view(-1, 1, self.r_image_size, self.r_image_size)
@@ -345,7 +345,7 @@ class StoryGAN(nn.Module):
         h_code = self.upsample4(h_code)
         # state size 3 x 64 x 64
         h = self.img(h_code)
-        fake_video = h.view(h.size(0) / self.video_len, self.video_len, self.n_channels, h.size(3), h.size(3))
+        fake_video = h.view(int(h.size(0) / self.video_len), self.video_len, self.n_channels, h.size(3), h.size(3))
         fake_video = fake_video.permute(0, 2, 1, 3, 4)
         return None, fake_video, r_mu, r_logvar, m_mu, m_logvar
 
@@ -359,7 +359,7 @@ class StoryGAN(nn.Module):
         # one
         zmc_code = torch.cat((zm_code, c_code), dim = 1)
         zmc_code = self.fc(zmc_code)
-        zmc_code = zmc_code.view(-1, self.gf_dim/2, 4, 4)
+        zmc_code = zmc_code.view(-1, int(self.gf_dim/2), 4, 4)
         # two
         m_image = self.image_net(m_code)
         m_image = m_image.view(-1, 1, self.r_image_size, self.r_image_size)

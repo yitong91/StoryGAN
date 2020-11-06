@@ -1,8 +1,10 @@
-# StoryGAN: A Sequential Conditional GAN for Story Visualization
+# StoryGAN: A Sequential Conditional GAN for Story Visualization (Python 3.7+, Pytorch 1.6)
 This repository is still under construction. 
 
 ## Requirement:
-Python 2.7, PyTorch, cv2
+Python 3.7+
+Pytorch 1.6
+Opencv-python (cv2)
 
 ## Configure File
 /code/cfg/clevr.yml is the configure file for the model. This file contains the setup of the dimension of the features, maximum training epoches and etc.
