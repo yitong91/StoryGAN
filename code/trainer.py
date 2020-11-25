@@ -81,7 +81,7 @@ class GANTrainer(object):
         batch_idx, batch = next(self.imagedataset)
         b = batch
         if cfg.CUDA:
-            for k, v in batch.iteritems():
+            for k, v in batch.items():
                 if k == 'text':
                     continue
                 else:
@@ -179,12 +179,16 @@ class GANTrainer(object):
                 ######################################################
                
                 im_inputs = (im_motion_input, im_content_input)
-                _, im_fake, im_mu, im_logvar = \
-                    nn.parallel.data_parallel(netG.sample_images, im_inputs, self.gpus)
+                #_, im_fake, im_mu, im_logvar = \
+                #    nn.parallel.data_parallel(netG.sample_images, im_inputs, self.gpus)
+                # _, im_fake, im_mu, im_logvar = netG.sample_images(im_motion_input, im_content_input)
+                _, im_fake, im_mu, im_logvar =netG.sample_images(im_motion_input, im_content_input)
 
                 st_inputs = (st_motion_input, st_content_input)
-                _, st_fake, c_mu, c_logvar, m_mu, m_logvar = \
-                    nn.parallel.data_parallel(netG.sample_videos, st_inputs, self.gpus)
+                #_, st_fake, c_mu, c_logvar, m_mu, m_logvar = \
+                #    nn.parallel.data_parallel(netG.sample_videos, st_inputs, self.gpus)
+                # _, st_fake, c_mu, c_logvar, m_mu, m_logvar = netG.sample_videos(st_motion_input, st_content_input)
+                _, st_fake, c_mu, c_logvar, m_mu, m_logvar=netG.sample_videos( st_motion_input, st_content_input)
                
 
                 ############################
