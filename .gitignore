@@ -1,1 +1,8 @@
-__pycache__
+**.vscode
+**.DS_Store
+**__pycache__**
+**__MACOSX**
+
+code/sandbox.py
+code/output/**
+code/cfg/clevr_cpu.yml
