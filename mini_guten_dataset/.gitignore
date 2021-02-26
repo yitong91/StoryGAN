@@ -1,0 +1,9 @@
+images_grouped/
+images_grouped.zip
+
+encode.py
+desc_embeddings.npy
+
+missing_imgs.txt
+books.csv
+stories.csv
