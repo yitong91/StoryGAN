@@ -1,0 +1,19 @@
+name: storygan2
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - cudatoolkit=9.2
+  - cuda92=1.0  
+  - python=3.7.9  
+  - pytorch
+  - torchaudio
+  - torchvision
+  - pip:
+    - easydict
+    - python-dateutil
+    - pyyaml
+    - sklearn    
+    - torch
+    - torchfile
+    - tqdm

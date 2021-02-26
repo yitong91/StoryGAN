@@ -1,5 +1,6 @@
 # StoryGAN on a custom dataset of illustrated children's books
 
+
 This repo is a modification of the original StoryGAN repo.
 
 ## Usage
@@ -12,6 +13,7 @@ conda env create -f environment.yml
 
 Please download [images_grouped.zip](https://drive.google.com/file/d/10w-00iDJwdEumn61Z0m_ZVyEjeqSo2c3/view?usp=sharing).
 Then unzip the file inside the `mini_guten_dataset` folder.
+
 
 
 ## Training
