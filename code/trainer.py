@@ -1,17 +1,21 @@
 from __future__ import print_function
-from six.moves import range
-from PIL import Image
 
+import os
+import time
+import pdb
+
+import numpy as np
 import torch.backends.cudnn as cudnn
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
-import os
-import time
-import pdb
-import numpy as np
 import torchfile
+
+from tqdm import tqdm
+from shutil import copyfile
+from six.moves import range
+from PIL import Image
 
 from miscc.config import cfg
 from miscc.utils import mkdir_p
@@ -20,7 +24,6 @@ from miscc.utils import save_story_results, save_model
 from miscc.utils import KL_loss
 from miscc.utils import compute_discriminator_loss, compute_generator_loss, save_test_samples
 
-from shutil import copyfile
 
 class GANTrainer(object):
     def __init__(self, output_dir, ratio = 1.0, test_dir = None):
@@ -55,24 +58,27 @@ class GANTrainer(object):
         netD_st.apply(weights_init)
         print(netD_im)
         print(netD_st)
+        epoch, iteration = 0, 0
 
         if cfg.NET_G != '':
-            state_dict = \
+            snapshot = \
                 torch.load(cfg.NET_G,
                            map_location=lambda storage, loc: storage)
-            netG.load_state_dict(state_dict)
+            netG.load_state_dict(snapshot['state_dict'])
+            epoch, iteration = snapshot['epoch'], snapshot['iteration']
             print('Load from: ', cfg.NET_G)
         if cfg.NET_D != '':
-            state_dict = \
+            snapshot = \
                 torch.load(cfg.NET_D,
                            map_location=lambda storage, loc: storage)
-            netD.load_state_dict(state_dict)
+            netD.load_state_dict(snapshot['state_dict'])
+            epoch, iteration = snapshot['epoch'], snapshot['iteration']
             print('Load from: ', cfg.NET_D)
         if cfg.CUDA:
             netG.cuda()
             netD_im.cuda()
             netD_st.cuda()
-        return netG, netD_im, netD_st
+        return netG, netD_im, netD_st, epoch, iteration
 
 
     def sample_real_image_batch(self):
@@ -97,8 +103,7 @@ class GANTrainer(object):
         self.testloader = testloader
         self.imagedataset = None
         self.testdataset = None
-        netG, netD_im, netD_st = self.load_networks()
-       
+        netG, netD_im, netD_st, start_epoch, start_iteration = self.load_networks()
         
         im_real_labels = Variable(torch.FloatTensor(self.imbatch_size).fill_(1))
         im_fake_labels = Variable(torch.FloatTensor(self.imbatch_size).fill_(0))
@@ -127,7 +132,7 @@ class GANTrainer(object):
         optimizerG = optim.Adam(netG_para, lr=cfg.TRAIN.GENERATOR_LR,
                                 betas=(0.5, 0.999))
 
-        for epoch in range(self.max_epoch):
+        for epoch in range(start_epoch, start_epoch+self.max_epoch):
             start_t = time.time()
             if epoch % lr_decay_step == 0 and epoch > 0:
                 generator_lr *= 0.5
@@ -141,7 +146,8 @@ class GANTrainer(object):
 
 
 
-            for i, data in enumerate(storyloader, 0):
+            for i, data in enumerate(tqdm(storyloader), 0):
+            #for i, data in enumerate(storyloader, 0):
                 ######################################################
                 # (1) Prepare training data
                 ######################################################
@@ -260,9 +266,11 @@ class GANTrainer(object):
                      st_errD_real, st_errD_wrong, st_errD_fake, accG, accD,
                      (end_t - start_t)))
 
+            
+
             if epoch % self.snapshot_interval == 0:
-                save_model(netG, netD_im, netD_st, epoch, self.model_dir)
+                save_model(netG, netD_im, netD_st, epoch, i, self.model_dir)
                 save_test_samples(netG, self.testloader, self.test_dir)
         #
-        save_model(netG, netD_im, netD_st, self.max_epoch, self.model_dir)
+        save_model(netG, netD_im, netD_st, self.max_epoch, i, self.model_dir)
     #
