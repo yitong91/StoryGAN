@@ -32,6 +32,7 @@ python main_guten.py
 - [ ] Evaluation code
 - [ ] Pretrained models
 - [ ] Refactoring the original main/util codes
+  - [ ] Fix hardcoded values: clevr_data, guten_data
 
 
 ---
