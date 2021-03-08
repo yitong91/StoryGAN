@@ -1,7 +1,15 @@
-# StoryGAN on a custom dataset of illustrated children's books
+# CS236G Final Project: StoryGAN trained on Visual Storytelling Dataset  
 
+This repo builds upon the original StoryGAN repo. Novel contributions will include:
+- A model trained on [VIST](https://visionandlanguage.net/VIST/), a photorealistic dataset containing "81,743 unique photos in 20,211 sequences". The original StoryGAN authors only showed results from training on a cartoon and clip art dataset.
+- No more requirement for the entire story upfront. A user can start their storybook journey with just a single sentence.
+- Style transfer feature, powered by CycleGAN, to turn photorealistic outputs to beautiful illustrations.
 
-This repo is a modification of the original StoryGAN repo.
+## Note to TA:
+To view the code that we authored for Milestone 2, please refer to these files/directories:
+- [vist_data.py](https://github.com/eunjeeSung/StoryGAN/blob/master/code/vist_data.py): Pytorch dataset loading.
+- [main.py](https://github.com/eunjeeSung/StoryGAN/blob/master/code/main.py): Training pipeline.
+- [/vist_dataset](https://github.com/eunjeeSung/StoryGAN/tree/master/vist_dataset): VIST annotations processing.
 
 ## Usage
 
@@ -13,7 +21,6 @@ conda env create -f environment.yml
 
 Please download [images_grouped.zip](https://drive.google.com/file/d/10w-00iDJwdEumn61Z0m_ZVyEjeqSo2c3/view?usp=sharing).
 Then unzip the file inside the `mini_guten_dataset` folder.
-
 
 
 ## Training
