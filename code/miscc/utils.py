@@ -170,16 +170,33 @@ def get_multi_acc(predict, real):
     return acc
 
 
-def save_model(netG, netD_im, netD_st, epoch, model_dir):
+def save_model(netG, netD_im, netD_st, epoch, iteration, model_dir):
+    netG_snapshot = {
+        'state_dict': netG.state_dict(),
+        'epoch': epoch,
+        'iteration': iteration
+    }
     torch.save(
-        netG.state_dict(),
-        '%s/netG_epoch_%d.pth' % (model_dir, epoch))
+        netG_snapshot,
+        '%s/netG_epoch_%d_%d.pth' % (model_dir, epoch, iteration))
+
+    netD_im_snapshot = {
+        'state_dict': netD_im.state_dict(),
+        'epoch': epoch,
+        'iteration': iteration
+    }    
     torch.save(
-        netD_im.state_dict(),
-        '%s/netD_im_epoch_last.pth' % (model_dir))
+        netD_im_snapshot,
+        '%s/netD_im_epoch_%d_%d.pth' % (model_dir, epoch, iteration))
+
+    netD_st_snapshot = {
+        'state_dict': netD_st.state_dict(),
+        'epoch': epoch,
+        'iteration': iteration
+    }            
     torch.save(
-        netD_st.state_dict(),
-        '%s/netD_st_epoch_last.pth' % (model_dir))
+        netD_st_snapshot,
+        '%s/netD_st_epoch_last_%d_%d.pth' % (model_dir, epoch, iteration))
     print('Save G/D models')
 
 
@@ -213,6 +230,7 @@ def save_test_samples(netG, dataloader, save_path):
 
         _, fake, _,_,_,_ = netG.sample_videos(motion_input, content_input)
         save_story_results(real_cpu, fake, i, save_path)
+        break
 
     for i, batch in enumerate(dataloader, 0):
         if i>10:
@@ -232,6 +250,7 @@ def save_test_samples(netG, dataloader, save_path):
 
         _, fake, _,_,_,_ = netG.sample_videos(motion_input, content_input)
         save_story_results(real_cpu, fake, i, save_path, 5, True)
+        break
    
 
             
