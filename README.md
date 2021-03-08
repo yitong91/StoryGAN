@@ -11,13 +11,25 @@ To view the code that we authored for Milestone 2, please refer to these files/d
 - [main.py](https://github.com/eunjeeSung/StoryGAN/blob/master/code/main.py): Training pipeline.
 - [/vist_dataset](https://github.com/eunjeeSung/StoryGAN/tree/master/vist_dataset): VIST annotations processing.
 
-## Usage
+## Environment
 
 ```bash
 conda env create -f environment.yml
 ```
 
 ## Data
+
+### VIST Dataset
+
+- Download annotations
+
+Download the story-in-sequence annotations into `vist_dataset` folder from the [VIST Dataset page](http://visionandlanguage.net/VIST/dataset.html). For example, place `train.story-in-sequence.json` in `vist_dataset/train_annotation` folder and run the preprocess codes to encode the text annotations with CLIP.
+
+- Download images
+
+To download the images from the official [VIST Dataset page](http://visionandlanguage.net/VIST/dataset.html), please follow the directions [here](https://www.quora.com/How-do-I-download-a-very-large-file-from-Google-Drive/answer/Shane-F-Carr?ch=10&share=6509af0d&srid=hoGGk). Since the dataset is shared via Google Drive and the files are large, we cannot download the files via `wget`.
+
+### miniGutenStoreis Dataset
 
 Please download [images_grouped.zip](https://drive.google.com/file/d/10w-00iDJwdEumn61Z0m_ZVyEjeqSo2c3/view?usp=sharing).
 Then unzip the file inside the `mini_guten_dataset` folder.
@@ -27,11 +39,25 @@ Then unzip the file inside the `mini_guten_dataset` folder.
 
 Train a StoryGAN model on the children's book data
 
-1. Modify `code/cfg/guten.yml`
+1. Modify `code/cfg/vist.yml` for the VIST dataset. Also, set `ENCODINGS_FILE` and `PICKLE_FILE` inside `code/vist_data.py` to the path to the sentence encoding files.
+(`code/cfg/guten.yml` for tminiGutenStories dataset)
 
 2. Run the training code
+
 ```bash
-python main_guten.py
+python main.py \
+--cfg ./cfg/vist.yml \
+--img_dir /home/ubuntu/VIST/train \
+--desc_path ../vist_dataset/train_annotation
+```
+
+3. Run tensorboard
+
+```bash
+tensorboard \
+--log_dir=./runs \
+--host=0.0.0.0 \
+--port=<open port>
 ```
 
 ## TODO
