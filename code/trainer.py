@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
 import torchfile
+from torch.utils.tensorboard import SummaryWriter
 
 from tqdm import tqdm
 from shutil import copyfile
@@ -67,13 +68,20 @@ class GANTrainer(object):
             netG.load_state_dict(snapshot['state_dict'])
             epoch, iteration = snapshot['epoch'], snapshot['iteration']
             print('Load from: ', cfg.NET_G)
-        if cfg.NET_D != '':
+        if cfg.NET_D_ST != '':
             snapshot = \
-                torch.load(cfg.NET_D,
+                torch.load(cfg.NET_D_ST,
                            map_location=lambda storage, loc: storage)
-            netD.load_state_dict(snapshot['state_dict'])
+            netD_st.load_state_dict(snapshot['state_dict'])
             epoch, iteration = snapshot['epoch'], snapshot['iteration']
-            print('Load from: ', cfg.NET_D)
+            print('Load from: ', cfg.NET_D_ST)
+        if cfg.NET_D_IM != '':
+            snapshot = \
+                torch.load(cfg.NET_D_IM,
+                           map_location=lambda storage, loc: storage)
+            netD_im.load_state_dict(snapshot['state_dict'])
+            epoch, iteration = snapshot['epoch'], snapshot['iteration']
+            print('Load from: ', cfg.NET_D_IM)        
         if cfg.CUDA:
             netG.cuda()
             netD_im.cuda()
@@ -99,11 +107,14 @@ class GANTrainer(object):
 
 
     def train(self, imageloader, storyloader, testloader):
+        writer = SummaryWriter()
+
         self.imageloader = imageloader
         self.testloader = testloader
         self.imagedataset = None
         self.testdataset = None
         netG, netD_im, netD_st, start_epoch, start_iteration = self.load_networks()
+        iteration = start_iteration
         
         im_real_labels = Variable(torch.FloatTensor(self.imbatch_size).fill_(1))
         im_fake_labels = Variable(torch.FloatTensor(self.imbatch_size).fill_(0))
@@ -249,11 +260,23 @@ class GANTrainer(object):
                     optimizerG.step()
 
                 if i % 100 == 0:
-                    # save the image result for each epoch
+                    # save the image result for each snapshot interval
                     lr_fake, fake, _, _, _, _ = netG.sample_videos(st_motion_input, st_content_input)
                     save_story_results(st_real_cpu, fake, epoch, self.image_dir)
                     if lr_fake is not None:
                         save_story_results(None, lr_fake, epoch, self.image_dir)
+
+                    # Tensorboard
+                    writer.add_scalar("Loss_D/train", st_errD.data, iteration)
+                    writer.add_scalar("Loss_G/train", st_errG.data, iteration)  
+                    writer.add_scalar("Loss_real/train", st_errD_real, iteration)
+                    writer.add_scalar("Loss_wrong/train", st_errD_wrong, iteration)
+                    writer.add_scalar("Loss_fake/train", st_errD_fake, iteration)
+                    writer.add_scalar("accG/train", accG, iteration)
+                    writer.add_scalar("accD/train", accD, iteration)
+                    writer.flush()
+                
+                iteration += 1
 
             end_t = time.time()
             print('''[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f
@@ -264,13 +287,13 @@ class GANTrainer(object):
                   % (epoch, self.max_epoch, i, len(storyloader),
                      st_errD.data, st_errG.data,
                      st_errD_real, st_errD_wrong, st_errD_fake, accG, accD,
-                     (end_t - start_t)))
-
-            
+                     (end_t - start_t)))    
 
             if epoch % self.snapshot_interval == 0:
                 save_model(netG, netD_im, netD_st, epoch, i, self.model_dir)
                 save_test_samples(netG, self.testloader, self.test_dir)
+
         #
         save_model(netG, netD_im, netD_st, self.max_epoch, i, self.model_dir)
+        writer.close()
     #

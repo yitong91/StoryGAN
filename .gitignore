@@ -6,3 +6,4 @@
 code/sandbox.py
 code/output/**
 code/cfg/clevr_cpu.yml
+code/runs

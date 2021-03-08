@@ -11,9 +11,11 @@ dependencies:
   - torchvision
   - pip:
     - easydict
+    - gdown
     - python-dateutil
     - pyyaml
     - sklearn    
+    - tensorboard
     - torch
     - torchfile
     - tqdm
