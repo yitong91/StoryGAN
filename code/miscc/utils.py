@@ -252,5 +252,30 @@ def save_test_samples(netG, dataloader, save_path):
         save_story_results(real_cpu, fake, i, save_path, 5, True)
         break
    
+def valid_img_path(img_path):
+    if not os.path.exists(img_path):
+        if os.path.exists(img_path.replace('.jpg', '.png')):
+            img_path = img_path.replace('.jpg', '.png')
+        elif os.path.exists(img_path.replace('.jpg', '.gif')):
+            img_path = img_path.replace('.jpg', '.gif')
+    return img_path
 
-            
+def valid_np_img(img, image_id):
+    np_img = np.array(img)
+    if len(np_img.shape) >= 3 and np_img.shape[2] != 3:
+        return np.stack((np_img[:, :, 0],) * 3, axis=2)
+    elif len(np_img.shape) == 2:
+        return np.stack((np_img,) * 3, axis=-1)
+    else:
+        return np_img
+
+def video_transform(video, image_transform):
+    vid = []
+    for im in video:
+        try:
+            vid.append(image_transform(im))
+        except Exception as err:
+            print(err, "/", im.shape, "/", im)
+            raise
+    vid = torch.stack(vid).permute(1, 0, 2, 3)
+    return vid        
