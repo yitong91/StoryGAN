@@ -20,9 +20,11 @@ from os import path
 import pickle
 import torch
 
-IMG_DIR = '/home/ubuntu/vist/images/train'
-JSON_FILE = '/home/ubuntu/vist/sis/train.story-in-sequence.json'
-PICKLE_FILE = 'train_annotations.pickle' # where to save the final list of story annotations
+from PIL import Image
+
+IMG_DIR = '/home/ubuntu/VIST/train'
+JSON_FILE = '/home/ubuntu/StoryGAN/vist_dataset/train_annotation/train.story-in-sequence.json'
+PICKLE_FILE = 'train_annotation/train_annotations.pickle' # where to save the final list of story annotations
 
 num_missing_images = 0
 num_omitted_stories = 0
@@ -63,6 +65,12 @@ for index,annot in enumerate(annotations):
   if not os.path.exists(img_file):
     num_missing_images += 1
     is_story_intact = False
+  else:
+    try:
+      img = Image.open(img_file)
+    except Exception as err:
+      is_story_intact = False
+      print("Image cannot be opened: ", img_file)
 
   # Append to story
   story.append((photo_id, index))

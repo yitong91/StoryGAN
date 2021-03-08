@@ -1,3 +1,7 @@
 test.py
 test/
+
+val_annotation/
+train_annotation/
+
 **.p
