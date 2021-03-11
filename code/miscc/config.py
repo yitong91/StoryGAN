@@ -19,6 +19,7 @@ __C.WORKERS = 6
 __C.VIDEO_LEN = 5
 __C.NET_G = ''
 __C.NET_D_ST = ''
+__C.NET_D_IM = ''
 __C.NET_S_IM = ''
 __C.STAGE1_G = ''
 __C.DATA_DIR = ''
