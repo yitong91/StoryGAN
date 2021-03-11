@@ -36,8 +36,8 @@ class StoryDataset(torch.utils.data.Dataset):
 
     Attributes:
         img_dir (str): Directory containing dataset images
-        encodings (str): File path to the file containing encoded sentences in an 1-D array
-        stories (str): File path to the file containing tuples of (image_id, encoding_id)
+        encodings (file): File containing encoded sentences in an 1-D array
+        stories (file): File containing tuples of (image_id, encoding_id)
                        in an 1-D array
         transforms (str): Pytorch transform defined in `main.py`
         video_len (int): Number of frames in a story
@@ -88,8 +88,8 @@ class ImageDataset(torch.utils.data.Dataset):
 
     Attributes:
         img_dir (str): Directory containing dataset images
-        encodings (str): File path to the file containing encoded sentences in an 1-D array
-        stories (str): File path to the file containing tuples of (image_id, encoding_id)
+        encodings (file): File containing encoded sentences in an 1-D array
+        stories (file): File containing tuples of (image_id, encoding_id)
                        in an 1-D array
         transforms (str): Pytorch transform defined in `main.py`
         video_len (int): Number of frames in a story
