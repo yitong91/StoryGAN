@@ -3,7 +3,11 @@
 **__pycache__**
 **__MACOSX**
 
+code/output**/**
+code/runs**
 code/sandbox.py
-code/output/**
+code/model_original.py
 code/cfg/clevr_cpu.yml
-code/runs
+code/cfg/vist_continuous.yml
+
+output/

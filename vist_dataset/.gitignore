@@ -3,5 +3,7 @@ test/
 
 val_annotation/
 train_annotation/
+test_annotation/
+sample_annotation/
 
 **.p
