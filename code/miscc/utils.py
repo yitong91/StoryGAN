@@ -11,6 +11,7 @@ import torch.nn as nn
 import torchvision.utils as vutils
 from torch.autograd import Variable
 from sklearn.metrics import accuracy_score
+
 #############################
 def KL_loss(mu, logvar):
     # -0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
@@ -18,31 +19,56 @@ def KL_loss(mu, logvar):
     KLD = torch.mean(KLD_element).mul_(-0.5)
     return KLD
 
-
-def compute_discriminator_loss(netD, real_imgs, fake_imgs,
+def compute_discriminator_loss(type, netD, real_imgs, fake_imgs,
                                real_labels, fake_labels, real_catelabels,
                                conditions, gpus):
-    ratio = 1.0
+    if type == 'bce':
+        return _compute_bce_discriminator_loss(netD, real_imgs, fake_imgs,
+                               real_labels, fake_labels, real_catelabels,
+                               conditions, gpus)
+    elif type == 'wgan-gp':
+        return _compute_wasserstein_discriminator_loss(netD, real_imgs, fake_imgs,
+                               real_labels, fake_labels, real_catelabels,
+                               conditions, gpus)
+
+def _compute_bce_discriminator_loss(netD, real_imgs, fake_imgs,
+                               real_labels, fake_labels, real_catelabels,
+                               conditions, gpus):
     cate_criterion =nn.MultiLabelSoftMarginLoss()
     criterion = nn.BCELoss()
+
+    ratio = 1.0    
+    # gp_lambda = 0.00005
     batch_size = real_imgs.size(0)
     cond = conditions.detach()
     fake = fake_imgs.detach()
+
     real_features = nn.parallel.data_parallel(netD, (real_imgs), gpus)
     fake_features = nn.parallel.data_parallel(netD, (fake), gpus)
+
     # real pairs
     inputs = (real_features, cond)
     real_logits = nn.parallel.data_parallel(netD.get_cond_logits, inputs, gpus)
     errD_real = criterion(real_logits, real_labels)
+    
     # wrong pairs
     inputs = (real_features[:(batch_size-1)], cond[1:])
     wrong_logits = \
         nn.parallel.data_parallel(netD.get_cond_logits, inputs, gpus)
     errD_wrong = criterion(wrong_logits, fake_labels[1:])
+    
     # fake pairs
     inputs = (fake_features, cond)
     fake_logits = nn.parallel.data_parallel(netD.get_cond_logits, inputs, gpus)
     errD_fake = criterion(fake_logits, fake_labels)
+
+    # gradient penalty
+    # epsilon = torch.rand([len(real_imgs)] + [1 for _ in range(len(real_imgs.shape)-1)], \
+    #                         device='cuda', requires_grad=True)
+    # grad = _get_gradient(netD, real_imgs, fake_imgs, epsilon).contiguous()
+    # grad -= grad.min(1, keepdim=True)[0]
+    # grad /= grad.max(1, keepdim=True)[0]
+    # gp = _gradient_penalty(grad)
 
     if netD.get_uncond_logits is not None:
         real_logits = \
@@ -53,13 +79,13 @@ def compute_discriminator_loss(netD, real_imgs, fake_imgs,
                                       (fake_features), gpus)
         uncond_errD_real = criterion(real_logits, real_labels)
         uncond_errD_fake = criterion(fake_logits, fake_labels)
-        #
         errD = ((errD_real + uncond_errD_real) / 2. +
                 (errD_fake + errD_wrong + uncond_errD_fake) / 3.)
         errD_real = (errD_real + uncond_errD_real) / 2.
         errD_fake = (errD_fake + uncond_errD_fake) / 2.
     else:
         errD = errD_real + (errD_fake + errD_wrong) * 0.5
+
     acc = 0
     if netD.cate_classify is not None:
         cate_logits = nn.parallel.data_parallel(netD.cate_classify, real_features, gpus)
@@ -67,10 +93,134 @@ def compute_discriminator_loss(netD, real_imgs, fake_imgs,
         errD = errD + ratio * cate_criterion(cate_logits, real_catelabels)
         acc = accuracy_score(real_catelabels.cpu().data.numpy().astype('int32'), 
             (cate_logits.cpu().data.numpy() > 0.5).astype('int32'))
+
     return errD, errD_real.data, errD_wrong.data, errD_fake.data, acc
 
+def _compute_wasserstein_discriminator_loss(netD, real_imgs, fake_imgs,
+                               real_labels, fake_labels, real_catelabels,
+                               conditions, gpus):     
+    ratio = 1.0
+    gp_lambda = 10
+        
+    criterion = nn.BCELoss()
+    bce_criterion = nn.BCELoss()
+    cate_criterion =nn.MultiLabelSoftMarginLoss()
 
-def compute_generator_loss(netD, fake_imgs, real_labels, fake_catelabels, conditions, gpus):
+    batch_size = real_imgs.size(0)
+    cond = conditions.detach()
+    fake = fake_imgs.detach()
+    real_features = nn.parallel.data_parallel(netD, (real_imgs), gpus)
+    fake_features = nn.parallel.data_parallel(netD, (fake), gpus)
+
+    # real pairs
+    inputs = (real_features, cond)
+    D_real = nn.parallel.data_parallel(netD.get_critic, inputs, gpus)
+    real_logits = nn.parallel.data_parallel(netD.get_cond_logits, inputs, gpus)
+    errD_real = criterion(real_logits, real_labels)    
+
+    # wrong pairs
+    inputs = (real_features[:(batch_size-1)], cond[1:])
+    D_wrong = nn.parallel.data_parallel(netD.get_critic, inputs, gpus)
+    wrong_logits = \
+        nn.parallel.data_parallel(netD.get_cond_logits, inputs, gpus)
+    errD_wrong = bce_criterion(wrong_logits, fake_labels[1:])    
+    
+    # fake pairs
+    inputs = (fake_features, cond)
+    D_fake = nn.parallel.data_parallel(netD.get_critic, inputs, gpus)
+    fake_logits = nn.parallel.data_parallel(netD.get_cond_logits, inputs, gpus)
+    errD_fake = criterion(fake_logits, fake_labels)
+
+    # gradient penalty
+    epsilon = torch.rand([len(real_imgs)] + [1 for _ in range(len(real_imgs.shape)-1)], \
+                            device='cuda', requires_grad=True)
+    grad = _get_gradient(netD, real_imgs, fake_imgs, epsilon).contiguous()
+    gp = _gradient_penalty(grad)
+
+    # Wasserstein loss
+    errD = (torch.mean(D_fake) + torch.mean(D_wrong)) * 0.5 \
+            - torch.mean(D_real) \
+            + gp_lambda * gp
+
+    if netD.cate_classify is not None:
+        cate_logits = nn.parallel.data_parallel(netD.cate_classify, real_features, gpus)
+        cate_logits = cate_logits.squeeze()
+        errD = errD + ratio * cate_criterion(cate_logits, real_catelabels)
+        acc = accuracy_score(real_catelabels.cpu().data.numpy().astype('int32'), 
+            (cate_logits.cpu().data.numpy() > 0.5).astype('int32'))
+
+    return errD, errD_real.data, errD_wrong.data, errD_fake.data, 0
+
+def _gradient_penalty(gradient):
+    '''
+    Original code from the Coursera GAN course.
+    Return the gradient penalty, given a gradient.
+    Given a batch of image gradients, you calculate the magnitude of each image's gradient
+    and penalize the mean quadratic distance of each magnitude to 1.
+    Parameters:
+        gradient: the gradient of the critic's scores, with respect to the mixed image
+    Returns:
+        penalty: the gradient penalty
+    '''
+    # Flatten the gradients so that each row captures one image
+    gradient = gradient.view(len(gradient), -1)
+
+    # Calculate the magnitude of every row
+    gradient_norm = gradient.norm(2, dim=1)
+    
+    # Penalize the mean squared distance of the gradient norms from 1
+    penalty = torch.mean(torch.pow(gradient_norm - 1, 2))
+    return penalty
+
+def _get_gradient(crit, real, fake, epsilon):
+    '''
+    Original code from the Coursera GAN course.
+    Return the gradient of the critic's scores with respect to mixes of real and fake images.
+    Parameters:
+        crit: the critic model
+        real: a batch of real images
+        fake: a batch of fake images
+        epsilon: a vector of the uniformly random proportions of real/fake per mixed image
+    Returns:
+        gradient: the gradient of the critic's scores, with respect to the mixed image
+    '''
+    # Mix the images together
+    mixed_images = real * epsilon + fake * (1 - epsilon)
+    mixed_scores = crit(mixed_images)
+    
+    # Take the gradient of the scores with respect to the images
+    gradient = torch.autograd.grad(
+        inputs=mixed_images,
+        outputs=mixed_scores,
+        grad_outputs=torch.ones_like(mixed_scores), 
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+    return gradient    
+
+def _triplet_loss(D_fake, D_real, D_wrong):    
+    pos_dist = torch.sqrt(torch.square(D_real[1:] - D_fake[1:]))
+    neg_dist = torch.sqrt(torch.square(D_real[1:] - D_wrong))
+
+    dists = torch.cat((pos_dist.unsqueeze(1), neg_dist.unsqueeze(1)), axis=1)
+    m = torch.max(dists)
+    dists = dists - m
+    log_sum_exp = m + torch.log(torch.sum(torch.exp(dists)))
+    loss = -torch.mean(neg_dist) + torch.mean(log_sum_exp)
+    return loss
+
+def compute_generator_loss(type, netD, fake_imgs, real_labels, fake_catelabels, conditions, gpus):
+    if type == 'bce':
+        return _compute_bce_generator_loss(netD, fake_imgs, real_labels,
+                                            fake_catelabels, conditions, gpus)
+    elif type == 'wgan-gp':
+        return _compute_wasserstein_generator_loss(netD, fake_imgs, real_labels,
+                                                    fake_catelabels, conditions, gpus)
+    elif type =='non-saturating':
+        return _compute_non_saturating_generator_loss(netD, fake_imgs, real_labels,
+                                                    fake_catelabels, conditions, gpus)
+
+def _compute_bce_generator_loss(netD, fake_imgs, real_labels, fake_catelabels, conditions, gpus):
     ratio = 0.4
     criterion = nn.BCELoss()
     cate_criterion =nn.MultiLabelSoftMarginLoss()
@@ -94,6 +244,54 @@ def compute_generator_loss(netD, fake_imgs, real_labels, fake_catelabels, condit
         acc = accuracy_score(fake_catelabels.cpu().data.numpy().astype('int32'), 
             (cate_logits.cpu().data.numpy() > 0.5).astype('int32'))
     return errD_fake, acc
+
+def _compute_wasserstein_generator_loss(netD, fake_imgs, real_labels, fake_catelabels, conditions, gpus):
+    ratio = 0.4
+
+    cate_criterion =nn.MultiLabelSoftMarginLoss()
+    cond = conditions.detach()
+    fake_features = nn.parallel.data_parallel(netD, (fake_imgs), gpus)
+
+    # Wasserstein loss
+    inputs = (fake_features, cond)
+    D_fake = nn.parallel.data_parallel(netD.get_critic, inputs, gpus)
+    errD_fake = -torch.mean(D_fake)
+
+    if netD.cate_classify is not None:
+        cate_logits = nn.parallel.data_parallel(netD.cate_classify, fake_features, gpus)
+        cate_logits = cate_logits.squeeze()
+        errD_fake = errD_fake + ratio * cate_criterion(cate_logits, fake_catelabels)
+        acc = accuracy_score(fake_catelabels.cpu().data.numpy().astype('int32'), 
+            (cate_logits.cpu().data.numpy() > 0.5).astype('int32'))
+    return errD_fake, 0
+
+def _compute_non_saturating_generator_loss(netD, fake_imgs, real_labels, fake_catelabels, conditions, gpus):
+    ratio = 0.4
+    criterion = nn.BCELoss()
+    cate_criterion =nn.MultiLabelSoftMarginLoss()
+    cond = conditions.detach()
+    fake_features = nn.parallel.data_parallel(netD, (fake_imgs), gpus)
+
+    # fake pairs
+    inputs = (fake_features, cond)
+    fake_logits = nn.parallel.data_parallel(netD.get_cond_logits, inputs, gpus)
+    errD_fake = torch.mean(-torch.log(fake_logits))
+
+    if netD.get_uncond_logits is not None:
+        fake_logits = \
+            nn.parallel.data_parallel(netD.get_uncond_logits,
+                                      (fake_features), gpus)
+        uncond_errD_fake = criterion(fake_logits, real_labels)
+        errD_fake += uncond_errD_fake
+
+    acc = 0
+    if netD.cate_classify is not None:
+        cate_logits = nn.parallel.data_parallel(netD.cate_classify, fake_features, gpus)
+        cate_logits = cate_logits.squeeze()
+        errD_fake = errD_fake + ratio * cate_criterion(cate_logits, fake_catelabels)
+        acc = accuracy_score(fake_catelabels.cpu().data.numpy().astype('int32'), 
+            (cate_logits.cpu().data.numpy() > 0.5).astype('int32'))
+    return errD_fake, 0
 
 
 #############################
@@ -178,7 +376,7 @@ def save_model(netG, netD_im, netD_st, epoch, iteration, model_dir):
     }
     torch.save(
         netG_snapshot,
-        '%s/netG_epoch_%d_%d.pth' % (model_dir, epoch, iteration))
+        '%s/netG_epoch_%d.pth' % (model_dir, epoch))
 
     netD_im_snapshot = {
         'state_dict': netD_im.state_dict(),
@@ -187,7 +385,7 @@ def save_model(netG, netD_im, netD_st, epoch, iteration, model_dir):
     }    
     torch.save(
         netD_im_snapshot,
-        '%s/netD_im_epoch_%d_%d.pth' % (model_dir, epoch, iteration))
+        '%s/netD_im_epoch_%d.pth' % (model_dir, epoch))
 
     netD_st_snapshot = {
         'state_dict': netD_st.state_dict(),
@@ -196,7 +394,7 @@ def save_model(netG, netD_im, netD_st, epoch, iteration, model_dir):
     }            
     torch.save(
         netD_st_snapshot,
-        '%s/netD_st_epoch_last_%d_%d.pth' % (model_dir, epoch, iteration))
+        '%s/netD_st_epoch_last_%d.pth' % (model_dir, epoch))
     print('Save G/D models')
 
 
@@ -251,7 +449,9 @@ def save_test_samples(netG, dataloader, save_path):
         _, fake, _,_,_,_ = netG.sample_videos(motion_input, content_input)
         save_story_results(real_cpu, fake, i, save_path, 5, True)
         break
-   
+
+
+#############################
 def valid_img_path(img_path):
     if not os.path.exists(img_path):
         if os.path.exists(img_path.replace('.jpg', '.png')):
