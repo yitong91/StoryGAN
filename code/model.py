@@ -5,6 +5,7 @@ from miscc.config import cfg
 from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
+import torch.nn.utils.spectral_norm as spectral_norm
 import pdb
 if torch.cuda.is_available():
     T = torch.cuda
@@ -21,7 +22,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 def upBlock(in_planes, out_planes):
     block = nn.Sequential(
         nn.Upsample(scale_factor=2, mode='nearest'),
-        conv3x3(in_planes, out_planes),
+        conv3x3(in_planes, out_planes), #spectral_norm(conv3x3(in_planes, out_planes)),
         nn.BatchNorm2d(out_planes),
         nn.ReLU(True))
     return block
@@ -46,6 +47,7 @@ class ResBlock(nn.Module):
         return out
 
 
+# Story Encoder
 class CA_NET(nn.Module):
    
     def __init__(self):
@@ -61,6 +63,7 @@ class CA_NET(nn.Module):
         logvar = x[:, self.c_dim:]
         return mu, logvar
 
+    # mu(S) + std^2(S)^(1/2) * epx_S
     def reparametrize(self, mu, logvar):
         std = logvar.mul(0.5).exp_()
         if cfg.CUDA:
@@ -84,18 +87,20 @@ class D_GET_LOGITS(nn.Module):
         self.video_len = video_len
         if bcondition:
             self.conv1 = nn.Sequential(
-                conv3x3(ndf * 8 * video_len, ndf * 8),
+                conv3x3(ndf * 8 * video_len, ndf * 8), #spectral_norm(conv3x3(ndf * 8 * video_len, ndf * 8)),
                 nn.BatchNorm2d(ndf * 8),
                 nn.LeakyReLU(0.2, inplace=True)
+                #nn.Dropout(0.25),
                 )
             self.conv2 = nn.Sequential(
-                nn.Conv2d(ndf * 8, 1, kernel_size=4, stride=4),
+                nn.Conv2d(ndf * 8, 1, kernel_size=4, stride=4), #spectral_norm(nn.Conv2d(ndf * 8, 1, kernel_size=4, stride=4)),
                 nn.Sigmoid()
                 )
             self.convc = nn.Sequential(
-                conv3x3(self.ef_dim, ndf * 8),
+                conv3x3(self.ef_dim, ndf * 8), #spectral_norm(conv3x3(self.ef_dim, ndf * 8)),
                 nn.BatchNorm2d(ndf * 8),
                 nn.LeakyReLU(0.2, inplace=True)
+                #nn.Dropout(0.25),
                 )
         else:
             self.conv2 = nn.Sequential(
@@ -118,6 +123,46 @@ class D_GET_LOGITS(nn.Module):
         return output.view(-1)
 
 
+class D_GET_CRITIC(nn.Module):
+    def __init__(self, ndf, nef, video_len = 1, bcondition=True):
+        super(D_GET_CRITIC, self).__init__()
+        self.df_dim = ndf
+        self.ef_dim = nef
+        self.bcondition = bcondition
+        self.video_len = video_len
+        if bcondition:
+            self.conv1 = nn.Sequential(
+                conv3x3(ndf * 8 * video_len, ndf * 8),
+                nn.LayerNorm([4, 4]),
+                nn.LeakyReLU(0.2, inplace=True)
+                )
+            self.convc = nn.Sequential(
+                conv3x3(self.ef_dim, ndf * 8),
+                nn.LayerNorm([4, 4]),
+                nn.LeakyReLU(0.2, inplace=True)
+                )
+            self.final = nn.Sequential(
+                nn.Conv2d(ndf * 8, 1, kernel_size=4, stride=4)
+            )
+        else:
+            self.final = nn.Sequential(
+                nn.Conv2d(ndf * 8, 1, kernel_size=4, stride=4)
+            )
+
+    def forward(self, h_code, c_code=None):
+        # conditioning output    
+        if self.bcondition and c_code is not None:
+            c_code = c_code.view(-1, self.ef_dim, 1, 1)
+            c_code = c_code.repeat(1, 1, 4, 4)
+            c_code = self.convc(c_code)
+            h_code = self.conv1(h_code)
+            h_c_code = h_code * c_code
+        else:
+            h_c_code = h_code
+        output = self.final(h_c_code)
+        return output.view(-1)        
+
+
 class D_IMG(nn.Module):
     def __init__(self, use_categories = True):
         super(D_IMG, self).__init__()
@@ -129,19 +174,23 @@ class D_IMG(nn.Module):
     def define_module(self, use_categories):
         ndf, nef = self.df_dim, self.ef_dim
         self.encode_img = nn.Sequential(
-            nn.Conv2d(3, ndf, 4, 2, 1, bias=False),
+            nn.Conv2d(3, ndf, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(3, ndf, 4, 2, 1, bias=False)),
             nn.LeakyReLU(0.2, inplace=True),
+            #nn.Dropout(0.25),
             # state size. (ndf) x 32 x 32
-            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
+            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False)),
+            nn.LayerNorm([16, 16]),
             nn.LeakyReLU(0.2, inplace=True),
+            #nn.Dropout(0.25),
             # state size (ndf*2) x 16 x 16
-            nn.Conv2d(ndf*2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
+            nn.Conv2d(ndf*2, ndf * 4, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(ndf*2, ndf * 4, 4, 2, 1, bias=False)),
+            nn.LayerNorm([8, 8]),
             nn.LeakyReLU(0.2, inplace=True),
+            #nn.Dropout(0.25),
             # state size (ndf*4) x 8 x 8
-            nn.Conv2d(ndf*4, ndf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 8),
+            nn.Conv2d(ndf*4, ndf * 8, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(ndf*4, ndf * 8, 4, 2, 1, bias=False)),
+            nn.LayerNorm([4, 4]),
+            # nn.Dropout(0.25),
             # state size (ndf * 8) x 4 x 4)
             nn.LeakyReLU(0.2, inplace=True)
         )
@@ -152,6 +201,7 @@ class D_IMG(nn.Module):
             self.cate_classify = None
         self.get_cond_logits = D_GET_LOGITS(ndf, nef, 1)
         self.get_uncond_logits = None
+        self.get_critic = D_GET_CRITIC(ndf, nef, 1)
 
     def forward(self, image):
         img_embedding = self.encode_img(image)
@@ -171,25 +221,30 @@ class D_STY(nn.Module):
     def define_module(self):
         ndf, nef = self.df_dim, self.ef_dim
         self.encode_img = nn.Sequential(
-            nn.Conv2d(3, ndf, 4, 2, 1, bias=False),
+            nn.Conv2d(3, ndf, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(3, ndf, 4, 2, 1, bias=False)),
             nn.LeakyReLU(0.2, inplace=True),
+            #nn.Dropout(0.25),
             # state size. (ndf) x 32 x 32
-            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
+            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False)),
+            nn.LayerNorm([16, 16]),
             nn.LeakyReLU(0.2, inplace=True),
+            #nn.Dropout(0.25),
             # state size (ndf*2) x 16 x 16
-            nn.Conv2d(ndf*2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
+            nn.Conv2d(ndf*2, ndf * 4, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(ndf*2, ndf * 4, 4, 2, 1, bias=False)),
+            nn.LayerNorm([8, 8]),
             nn.LeakyReLU(0.2, inplace=True),
+            #nn.Dropout(0.25),
             # state size (ndf*4) x 8 x 8
-            nn.Conv2d(ndf*4, ndf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 8),
+            nn.Conv2d(ndf*4, ndf * 8, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(ndf*4, ndf * 8, 4, 2, 1, bias=False)),
+            nn.LayerNorm([4, 4]),
+            #nn.Dropout(0.25),
             # state size (ndf * 8) x 4 x 4)
             nn.LeakyReLU(0.2, inplace=True)
         )
 
         self.get_cond_logits = D_GET_LOGITS(ndf, nef, cfg.VIDEO_LEN)
         self.get_uncond_logits = None
+        self.get_critic = D_GET_CRITIC(ndf, nef, cfg.VIDEO_LEN)
         self.cate_classify = None
 
     def forward(self, story):
@@ -263,11 +318,11 @@ class StoryGAN(nn.Module):
             pad = (self.filter_size//2, self.filter_size//2), grouping = False)
 
         self.downsamples = nn.Sequential(
-            nn.Conv2d(1, ngf, 3, 2, 1, bias=False),
+            nn.Conv2d(1, ngf, 3, 2, 1, bias=False), #spectral_norm(nn.Conv2d(1, ngf, 3, 2, 1, bias=False)),
             nn.BatchNorm2d(ngf),
             nn.LeakyReLU(0.2, inplace=True),
 
-            nn.Conv2d(ngf, ngf//2, 4, 2, 1, bias=False),
+            nn.Conv2d(ngf, ngf//2, 4, 2, 1, bias=False), #spectral_norm(nn.Conv2d(ngf, ngf//2, 4, 2, 1, bias=False)),
             nn.BatchNorm2d(ngf//2),
             nn.LeakyReLU(0.2, inplace=True),
             )
@@ -282,6 +337,7 @@ class StoryGAN(nn.Module):
     def get_gru_initial_state(self, num_samples):
         return Variable(T.FloatTensor(num_samples, self.noise_dim+ self.motion_dim).normal_())
 
+    # GRU: takes concate. of sentence s_t and gaussian noise e_t and outputs the vector i_t
     def sample_z_motion(self, motion_input, video_len=None):
         video_len = video_len if video_len is not None else self.video_len
         if video_len > 1:
@@ -297,11 +353,11 @@ class StoryGAN(nn.Module):
             h_t.append(self.recurrent(e_t, h_t[-1]))
         z_m_t = [h_k.view(-1, 1, self.motion_dim) for h_k in h_t]
         z_motion = torch.cat(z_m_t[1:], dim=1).view(-1, self.motion_dim)
-        return z_motion
+        return z_motion # i_t
 
     def motion_content_rnn(self, motion_input, content_input):
         video_len = 1 if len(motion_input.shape) == 2 else self.video_len
-        h_t = [content_input]
+        h_t = [content_input] # start with h_0
         if len(motion_input.shape) == 2:
             motion_input = motion_input.unsqueeze(1)
         for frame_num in range(video_len):
@@ -312,54 +368,64 @@ class StoryGAN(nn.Module):
         return mocornn_co
 
     def sample_videos(self, motion_input, content_input):  
-        content_mean = content_input.mean(1)
-        crnn_code = self.motion_content_rnn(motion_input, content_mean)
-
+        # Story Encoder (mu(S), sigma(S))
+        content_mean = content_input.mean(1)        
         r_code, r_mu, r_logvar = content_mean, content_mean, content_mean #self.ca_net(torch.squeeze(content_input))
         content_input = content_mean.repeat(1, self.video_len)
         content_input = content_input.view((content_input.shape[0]*self.video_len, 
             int(content_input.shape[1]/self.video_len)))
+        c_code, _, _ = content_input, content_input, content_input #self.ca_net(content_input) # c_code: Encoded story = h_0
 
-        temp = motion_input.view(-1, motion_input.shape[2])
-        m_code, m_mu, m_logvar = temp, temp, temp #self.ca_net(temp)
-        c_code, c_mu, c_logvar = content_input, content_input, content_input #self.ca_net(content_input)
-        zm_code = self.sample_z_motion(motion_input)
-        
-       
-        # one
-        zmc_code = torch.cat((zm_code, c_code), dim = 1)
+        # Context Encoder: Linear + GRU + Text2Gist
+        # GRU Input
+        temp = motion_input.view(-1, motion_input.shape[2]) # raw sentence(s) (?)
+        m_code, m_mu, m_logvar = temp, temp, temp #self.ca_net(temp) # s_t(?)
+
+        # Context Encoder - GRU
+        zm_code = self.sample_z_motion(motion_input) # zm_code: i_t
+        zmc_code = torch.cat((zm_code, c_code), dim = 1) # c_code: h_0
         zmc_code = self.fc(zmc_code)
         zmc_code = zmc_code.view(-1, int(self.gf_dim/2), 4, 4)
-        # two
+        
+        # Context Encoder - Linear Layer
         m_image = self.image_net(m_code)
         m_image = m_image.view(-1, 1, self.r_image_size, self.r_image_size)
-        c_filter = self.filter_net(crnn_code)
+
+        # Context Encoder - Text2Gist(?)
+        crnn_code = self.motion_content_rnn(motion_input, content_mean) # i_t Provide sampled h_0 (?) to the RNN based Context Encoder as the initial state vector        
+        
+        # Filter Network
+        c_filter = self.filter_net(crnn_code) # Filter(i_t) (crnn_code: i_t)
         c_filter = c_filter.view(-1, 1, self.filter_size, self.filter_size)
+
+        # Pass o_t to the Image Generator
         mc_image = self.dfn_layer([m_image, c_filter])
-        mc_image = self.downsamples(mc_image)
-        zmc_all = torch.cat((zmc_code, mc_image), dim = 1)
-        #combine
+        mc_image = self.downsamples(mc_image) # convolved
+        zmc_all = torch.cat((zmc_code, mc_image), dim = 1) # o_t = Filter(i_t) * h_t (concat?)
+        
+        # Image Generator
         h_code = self.upsample1(zmc_all)
         h_code = self.upsample2(h_code)
         h_code = self.upsample3(h_code)
         h_code = self.upsample4(h_code)
         # state size 3 x 64 x 64
         h = self.img(h_code)
+
         fake_video = h.view(int(h.size(0) / self.video_len), self.video_len, self.n_channels, h.size(3), h.size(3))
         fake_video = fake_video.permute(0, 2, 1, 3, 4)
         return None, fake_video, r_mu, r_logvar, m_mu, m_logvar
 
-    def sample_images(self, motion_input, content_input):  
+    def sample_images(self, motion_input, content_input):
         m_code, m_mu, m_logvar = motion_input, motion_input, motion_input #self.ca_net(motion_input)
         c_code, c_mu, c_logvar = content_input, content_input, content_input #self.ca_net(content_input)
         crnn_code = self.motion_content_rnn(motion_input, content_input)
         zm_code = self.sample_z_motion(m_code, 1)
         
-       
         # one
         zmc_code = torch.cat((zm_code, c_code), dim = 1)
         zmc_code = self.fc(zmc_code)
         zmc_code = zmc_code.view(-1, int(self.gf_dim/2), 4, 4)
+        
         # two
         m_image = self.image_net(m_code)
         m_image = m_image.view(-1, 1, self.r_image_size, self.r_image_size)
@@ -369,7 +435,7 @@ class StoryGAN(nn.Module):
         mc_image = self.downsamples(mc_image)
         zmc_all = torch.cat((zmc_code, mc_image), dim = 1)
         
-        # combind
+        # image generator
         h_code = self.upsample1(zmc_all)
         h_code = self.upsample2(h_code)
         h_code = self.upsample3(h_code)

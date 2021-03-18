@@ -20,7 +20,6 @@ __C.VIDEO_LEN = 5
 __C.NET_G = ''
 __C.NET_D_ST = ''
 __C.NET_D_IM = ''
-__C.NET_S_IM = ''
 __C.STAGE1_G = ''
 __C.DATA_DIR = ''
 __C.VIS_COUNT = 64
@@ -44,6 +43,9 @@ __C.TRAIN.GENERATOR_LR = 2e-4
 
 __C.TRAIN.COEFF = edict()
 __C.TRAIN.COEFF.KL = 2.0
+__C.TRAIN.D_ITER = 1
+__C.TRAIN.LOSS_TYPE = 'bce'
+__C.TRAIN.OPTIMIZER = 'adam'
 
 # Modal options
 __C.GAN = edict()

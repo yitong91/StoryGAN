@@ -46,6 +46,8 @@ class GANTrainer(object):
         self.ratio = ratio
         torch.cuda.set_device(self.gpus[0])
         cudnn.benchmark = True
+        self.d_iter = cfg.TRAIN.D_ITER
+        self.loss_type = cfg.TRAIN.LOSS_TYPE
 
     # ############# For training stageI GAN #############
     def load_networks(self):
@@ -106,6 +108,13 @@ class GANTrainer(object):
         return b
 
 
+    def _add_instance_noise(self, imgs, std):
+        return imgs + \
+                torch.normal(0.0, std, imgs.size(),
+                dtype=imgs.dtype, layout=imgs.layout, 
+                device=imgs.device)        
+
+
     def train(self, imageloader, storyloader, testloader):
         writer = SummaryWriter()
 
@@ -113,12 +122,13 @@ class GANTrainer(object):
         self.testloader = testloader
         self.imagedataset = None
         self.testdataset = None
-        netG, netD_im, netD_st, start_epoch, start_iteration = self.load_networks()
+        netG, netD_im, netD_st, last_epoch, last_iteration = self.load_networks()
+        start_epoch, start_iteration = last_epoch + 1, last_iteration + 1
         iteration = start_iteration
         
-        im_real_labels = Variable(torch.FloatTensor(self.imbatch_size).fill_(1))
+        im_real_labels = Variable(torch.FloatTensor(self.imbatch_size).fill_(0.9)) # 1
         im_fake_labels = Variable(torch.FloatTensor(self.imbatch_size).fill_(0))
-        st_real_labels = Variable(torch.FloatTensor(self.stbatch_size).fill_(1))
+        st_real_labels = Variable(torch.FloatTensor(self.stbatch_size).fill_(0.9)) # 1
         st_fake_labels = Variable(torch.FloatTensor(self.stbatch_size).fill_(0))
         if cfg.CUDA:
             im_real_labels, im_fake_labels = im_real_labels.cuda(), im_fake_labels.cuda()
@@ -128,20 +138,31 @@ class GANTrainer(object):
         discriminator_lr = cfg.TRAIN.DISCRIMINATOR_LR
 
         lr_decay_step = cfg.TRAIN.LR_DECAY_EPOCH
-        im_optimizerD = \
-            optim.Adam(netD_im.parameters(),
-                       lr=cfg.TRAIN.DISCRIMINATOR_LR, betas=(0.5, 0.999))
+        if cfg.TRAIN.OPTIMIZER == 'adam':
+            im_optimizerD = \
+                optim.Adam(netD_im.parameters(),
+                           lr=cfg.TRAIN.DISCRIMINATOR_LR, betas=(0.5, 0.999))
+            st_optimizerD = \
+                optim.Adam(netD_st.parameters(),
+                        lr=cfg.TRAIN.DISCRIMINATOR_LR, betas=(0.5, 0.999))                           
 
-        st_optimizerD = \
-            optim.Adam(netD_st.parameters(),
-                       lr=cfg.TRAIN.DISCRIMINATOR_LR, betas=(0.5, 0.999))
+        elif cfg.TRAIN.OPTIMIZER == 'rmsprop':
+            im_optimizerD = optim.RMSprop(netD_im.parameters(),
+                    lr=cfg.TRAIN.DISCRIMINATOR_LR)
+            st_optimizerD = \
+                optim.RMSprop(netD_st.parameters(),
+                        lr=cfg.TRAIN.DISCRIMINATOR_LR)
 
         netG_para = []
         for p in netG.parameters():
             if p.requires_grad:
                 netG_para.append(p)
-        optimizerG = optim.Adam(netG_para, lr=cfg.TRAIN.GENERATOR_LR,
-                                betas=(0.5, 0.999))
+
+        if cfg.TRAIN.OPTIMIZER == 'adam':
+            optimizerG = optim.Adam(netG_para, lr=cfg.TRAIN.GENERATOR_LR,
+                                    betas=(0.5, 0.999))
+        elif cfg.TRAIN.OPTIMIZER == 'rmsprop':
+            optimizerG = optim.RMSprop(netG_para, lr=cfg.TRAIN.GENERATOR_LR)                                
 
         for epoch in range(start_epoch, start_epoch+self.max_epoch):
             start_t = time.time()
@@ -191,71 +212,73 @@ class GANTrainer(object):
                     im_content_input = im_content_input.cuda()
                     im_catelabel = im_catelabel.cuda()
                     st_catelabel = st_catelabel.cuda()
-                #######################################################
-                # (2) Generate fake stories and images
-                ######################################################
-               
-                im_inputs = (im_motion_input, im_content_input)
-                #_, im_fake, im_mu, im_logvar = \
-                #    nn.parallel.data_parallel(netG.sample_images, im_inputs, self.gpus)
-                # _, im_fake, im_mu, im_logvar = netG.sample_images(im_motion_input, im_content_input)
-                _, im_fake, im_mu, im_logvar =netG.sample_images(im_motion_input, im_content_input)
 
-                st_inputs = (st_motion_input, st_content_input)
-                #_, st_fake, c_mu, c_logvar, m_mu, m_logvar = \
-                #    nn.parallel.data_parallel(netG.sample_videos, st_inputs, self.gpus)
-                # _, st_fake, c_mu, c_logvar, m_mu, m_logvar = netG.sample_videos(st_motion_input, st_content_input)
-                _, st_fake, c_mu, c_logvar, m_mu, m_logvar=netG.sample_videos( st_motion_input, st_content_input)
-               
+                im_inputs = (im_motion_input, im_content_input)                    
+                st_inputs = (st_motion_input, st_content_input)                
 
-                ############################
-                # (3) Update D network
-                ###########################
-                netD_im.zero_grad()
-                netD_st.zero_grad()
-              
-                im_errD, im_errD_real, im_errD_wrong, im_errD_fake, accD = \
-                    compute_discriminator_loss(netD_im, im_real_imgs, im_fake,
-                                               im_real_labels, im_fake_labels, im_catelabel, 
-                                               im_mu, self.gpus)
+                for _ in range(self.d_iter):
+                    #######################################################
+                    # (2) Generate fake stories and images
+                    ######################################################
+                    _, im_fake, im_mu, im_logvar = netG.sample_images(im_motion_input, im_content_input)
+                    _, st_fake, c_mu, c_logvar, m_mu, m_logvar = netG.sample_videos( st_motion_input, st_content_input)
 
-                st_errD, st_errD_real, st_errD_wrong, st_errD_fake, _ = \
-                    compute_discriminator_loss(netD_st, st_real_imgs, st_fake,
-                                               st_real_labels, st_fake_labels, st_catelabel, 
-                                               c_mu, self.gpus)
+                    ############################
+                    # (3) Update D network
+                    ###########################                    
+                    netD_im.zero_grad()
+                    netD_st.zero_grad()
 
+                    # Add Gaussian Noise to the image to prevent overfitting
+                    rand_std = 0.1 - 1/200000 * iteration                    
+                    if rand_std > 0:
+                        im_real_imgs = self._add_instance_noise(im_real_imgs, rand_std)
+                        st_real_imgs = self._add_instance_noise(st_real_imgs, rand_std)                           
+                        im_fake = self._add_instance_noise(im_fake, rand_std)
+                        st_fake = self._add_instance_noise(st_fake, rand_std)                                       
+                
+                    im_errD, im_errD_real, im_errD_wrong, im_errD_fake, accD = \
+                        compute_discriminator_loss(self.loss_type, netD_im, im_real_imgs, im_fake,
+                                                im_real_labels, im_fake_labels, im_catelabel, 
+                                                im_mu, self.gpus)
 
-                im_errD.backward()
-                st_errD.backward()
-               
-                im_optimizerD.step()
-                st_optimizerD.step()
+                    st_errD, st_errD_real, st_errD_wrong, st_errD_fake, _ = \
+                        compute_discriminator_loss(self.loss_type, netD_st, st_real_imgs, st_fake,
+                                                st_real_labels, st_fake_labels, st_catelabel, 
+                                                c_mu, self.gpus)
 
+                    im_errD.backward(retain_graph=True)
+                    st_errD.backward(retain_graph=True)
+                
+                    im_optimizerD.step()
+                    st_optimizerD.step()
 
                 ############################
                 # (2) Update G network
                 ###########################
                 for g_iter in range(2):
-                    netG.zero_grad()
+                    #netG.zero_grad()
+                    optimizerG.zero_grad()
 
                     _, st_fake, c_mu, c_logvar, m_mu, m_logvar = netG.sample_videos(
                         st_motion_input, st_content_input)
-
-                    # st_mu = m_mu.view(cfg.TRAIN.ST_BATCH_SIZE, cfg.VIDEO_LEN, m_mu.shape[1])
-                    # st_mu = st_mu.contiguous().view(-1, cfg.VIDEO_LEN * m_mu.shape[1])
-
                     _, im_fake, im_mu, im_logvar = netG.sample_images(im_motion_input, im_content_input)
+                    
+                    if rand_std > 0:                   
+                        im_fake = self._add_instance_noise(im_fake, rand_std)
+                        st_fake = self._add_instance_noise(st_fake, rand_std)  
 
-                    im_errG, accG = compute_generator_loss(netD_im, im_fake,
+                    im_errG, accG = compute_generator_loss(self.loss_type, netD_im, im_fake,
                                                   im_real_labels, im_catelabel, im_mu, self.gpus)
-                    st_errG, _ = compute_generator_loss(netD_st, st_fake,
+                    st_errG, _ = compute_generator_loss(self.loss_type, netD_st, st_fake,
                                                   st_real_labels, st_catelabel, c_mu, self.gpus)
+
                     im_kl_loss = KL_loss(im_mu, im_logvar)
                     st_kl_loss = KL_loss(m_mu, m_logvar)
-                    errG = im_errG + self.ratio * st_errG
-
+                    #errG = im_errG + self.ratio * st_errG
                     kl_loss = im_kl_loss + self.ratio * st_kl_loss
-                    errG_total = im_errG + self.ratio * st_errG + kl_loss
+                    errG_total = im_errG + self.ratio * st_errG + kl_loss        
+
                     errG_total.backward()
                     optimizerG.step()
 
@@ -267,14 +290,22 @@ class GANTrainer(object):
                         save_story_results(None, lr_fake, epoch, self.image_dir)
 
                     # Tensorboard
+                    writer.add_scalar("Loss_D_im/train", im_errD.data, iteration) 
                     writer.add_scalar("Loss_D/train", st_errD.data, iteration)
                     writer.add_scalar("Loss_G/train", st_errG.data, iteration)  
+                    
+                    writer.add_scalar("Loss_real_im/train", im_errD_real, iteration)
+                    writer.add_scalar("Loss_wrong_im/train", im_errD_wrong, iteration)
+                    writer.add_scalar("Loss_fake_im/train", im_errD_fake, iteration)                    
                     writer.add_scalar("Loss_real/train", st_errD_real, iteration)
                     writer.add_scalar("Loss_wrong/train", st_errD_wrong, iteration)
                     writer.add_scalar("Loss_fake/train", st_errD_fake, iteration)
                     writer.add_scalar("accG/train", accG, iteration)
                     writer.add_scalar("accD/train", accD, iteration)
                     writer.flush()
+
+                    # Save checkpoint (Gets updated every 100 steps in an epoch)
+                    save_model(netG, netD_im, netD_st, epoch, iteration, self.model_dir)
                 
                 iteration += 1
 
@@ -290,10 +321,8 @@ class GANTrainer(object):
                      (end_t - start_t)))    
 
             if epoch % self.snapshot_interval == 0:
-                save_model(netG, netD_im, netD_st, epoch, i, self.model_dir)
+                save_model(netG, netD_im, netD_st, epoch, iteration, self.model_dir)
                 save_test_samples(netG, self.testloader, self.test_dir)
 
-        #
-        save_model(netG, netD_im, netD_st, self.max_epoch, i, self.model_dir)
+        save_model(netG, netD_im, netD_st, self.max_epoch, iteration, self.model_dir)
         writer.close()
-    #
